@@ -4,14 +4,16 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	_ "github.com/go-sql-driver/mysql"
 	"log"
 	"os"
 	"os/exec"
 	"strings"
+
+	_ "github.com/go-sql-driver/mysql"
+	"github.com/zsd-it/converter/tmp"
 )
 
-//map for converting mysql type to golang types
+// map for converting mysql type to golang types
 var typeForMysqlToGo = map[string]string{
 	"int":                "int64",
 	"integer":            "int64",
@@ -57,6 +59,7 @@ type Table2Struct struct {
 	table          string
 	prefix         string
 	config         *T2tConfig
+	modelConfig    *ModelConfig
 	err            error
 	realNameMethod string
 	enableJsonTag  bool   // 是否添加json的tag, 默认不添加
@@ -134,6 +137,10 @@ func (t *Table2Struct) Config(c *T2tConfig) *Table2Struct {
 }
 
 func (t *Table2Struct) Run() error {
+	if t.modelConfig == nil {
+		loadIni(t)
+	}
+
 	if t.config == nil {
 		t.config = new(T2tConfig)
 	}
@@ -181,7 +188,7 @@ func (t *Table2Struct) Run() error {
 		depth := 1
 		structContent += "type " + structName + " struct {\n"
 		for _, v := range item {
-			//structContent += tab(depth) + v.ColumnName + " " + v.Type + " " + v.Json + "\n"
+			// structContent += tab(depth) + v.ColumnName + " " + v.Type + " " + v.Json + "\n"
 			// 字段注释
 			var clumnComment string
 			if v.ColumnComment != "" {
@@ -226,6 +233,8 @@ func (t *Table2Struct) Run() error {
 
 	cmd := exec.Command("gofmt", "-w", filePath)
 	cmd.Run()
+
+	tmp.NewModelTmp("OK", t.modelConfig.Converter.DaoPath).Do()
 
 	log.Println("gen model finish!!!")
 
@@ -290,7 +299,7 @@ func (t *Table2Struct) getColumns(table ...string) (tableColumns map[string][]co
 			return
 		}
 
-		//col.Json = strings.ToLower(col.ColumnName)
+		// col.Json = strings.ToLower(col.ColumnName)
 		col.Tag = col.ColumnName
 		col.ColumnComment = col.ColumnComment
 		col.ColumnName = t.camelCase(col.ColumnName)
@@ -310,22 +319,17 @@ func (t *Table2Struct) getColumns(table ...string) (tableColumns map[string][]co
 			if t.config.JsonTagToHump {
 				jsonTag = t.camelCase(jsonTag)
 			}
-
-			//if col.Nullable == "YES" {
-			//	col.Json = fmt.Sprintf("`json:\"%s,omitempty\"`", col.Json)
-			//} else {
-			//}
 		}
 		if t.tagKey == "" {
 			t.tagKey = "orm"
 		}
 		if t.enableJsonTag {
-			//col.Json = fmt.Sprintf("`json:\"%s\" %s:\"%s\"`", col.Json, t.config.TagKey, col.Json)
+			// col.Json = fmt.Sprintf("`json:\"%s\" %s:\"%s\"`", col.Json, t.config.TagKey, col.Json)
 			col.Tag = fmt.Sprintf("`%s:\"%s\" json:\"%s\"`", t.tagKey, col.Tag, jsonTag)
 		} else {
 			col.Tag = fmt.Sprintf("`%s:\"%s\"`", t.tagKey, col.Tag)
 		}
-		//columns = append(columns, col)
+		// columns = append(columns, col)
 		if _, ok := tableColumns[col.TableName]; !ok {
 			tableColumns[col.TableName] = []column{}
 		}
@@ -340,7 +344,7 @@ func (t *Table2Struct) camelCase(str string) string {
 		str = strings.Replace(str, t.prefix, "", 1)
 	}
 	var text string
-	//for _, p := range strings.Split(name, "_") {
+	// for _, p := range strings.Split(name, "_") {
 	for _, p := range strings.Split(str, "_") {
 		// 字段首字母大写的同时, 是否要把其他字母转换为小写
 		switch len(p) {
